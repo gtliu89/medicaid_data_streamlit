@@ -66,13 +66,8 @@ def predict_change(group: str, state_var: str, emp_change_decimal: float) -> flo
 st.title("📊 Medicaid Eligibility Prediction Tool")
 st.markdown("Predict estimated eligibility by state and employment changes. Powered by regression model coefficients and poverty inputs.")
 
-# Layout
-col1, col2 = st.columns([2, 1])
-
-with col1:
-    state_choice = st.selectbox("Select a state", sorted(available_states), index=available_states.index("Minnesota"))
-with col2:
-    emp_change = st.slider("Employment rate change (%)", -10.0, 10.0, step=0.1, value=-2.0)
+state_choice = st.selectbox("Select a state", sorted(available_states), index=available_states.index("Minnesota"))
+emp_change = st.slider("Employment rate change (%)", -10.0, 10.0, step=0.1, value=-2.0)
 
 # Calculate predictions
 state_var = f"state_{state_choice}"
@@ -82,11 +77,17 @@ adults_result = predict_change("adults", state_var, emp_change_decimal)
 kids_result = predict_change("kids", state_var, emp_change_decimal)
 
 # Display Metrics
-st.markdown("### Current Eligibility Estimates")
+st.markdown("### Predicted Percent Change in Medicaid Eligibility")
 m1, m2, m3 = st.columns(3)
-m1.metric("👩 Adults Eligible", f"{adults_result * 100:.2f} %")
-m2.metric("🧒 Children Eligible", f"{kids_result * 100:.2f} %")
-m3.metric("Total eligible", f"{(kids_result + adults_result)* 100:.2f} %")
+m1.metric("👩 Change in Adult Eligibility", f"{adults_result * 100:.2f} %")
+m2.metric("🧒 Change in Child Eligibility", f"{kids_result * 100:.2f} %")
+m3.metric("Total change in Eligibility", f"{(kids_result + adults_result)* 100:.2f} %")
+
+st.markdown("### Predicted Change in Medicaid Eligibility")
+m1, m2, m3 = st.columns(3)
+m1.metric("👩 Change in Adult Eligibility", f"{adults_result * 100:.2f} %")
+m2.metric("🧒 Change in Child Eligibility", f"{kids_result * 100:.2f} %")
+m3.metric("Total change in Eligibility", f"{(kids_result + adults_result)* 100:.2f} %")
 
 # Line chart over employment range
 st.markdown("### 📈 Eligibility Over Employment Rate Changes")
