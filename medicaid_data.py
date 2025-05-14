@@ -41,12 +41,11 @@ group_col_map = {"adults": "adult", "kids": "child"}
 # Predict function
 def predict_change(group: str, state_var: str, emp_change_decimal: float) -> float:
     group_col = group_col_map[group]
-    ln_emp_change = np.log(1 + emp_change_decimal)
-
+    
     intercept = coeffs.loc[coeffs["variable"] == "Intercept", group_col].values[0]
     employment = coeffs.loc[coeffs["variable"] == "L.ln_employ", group_col].values[0]
     state_effect = coeffs.loc[coeffs["variable"] == state_var, group_col].values[0]
-    ln_prediction = intercept + employment * ln_emp_change + state_effect
+    prediction = intercept + (employment * emp_change_decimal) + state_effect
 
     poverty_row = poverty_inputs[poverty_inputs["state"] == state_var]
     if poverty_row.empty:
@@ -58,42 +57,55 @@ def predict_change(group: str, state_var: str, emp_change_decimal: float) -> flo
             cat = var.split("_")[-1]
             input_col = f"povcat11_{group}_{cat}_est2"
             if input_col in poverty_row.columns:
-                ln_prediction += coeff_val * poverty_row[input_col].values[0]
+                prediction += (coeff_val * poverty_row[input_col].values[0])
 
-    return np.exp(ln_prediction)
+    return prediction
+
 
 # Page UI
 st.title("📊 Medicaid Eligibility Prediction Tool")
-st.markdown("Predict estimated eligibility by state and employment changes. Powered by regression model coefficients and poverty inputs.")
+st.markdown("Select a state and input a change in employment to see how it would impact Medicaid eligibility.")
 
 state_choice = st.selectbox("Select a state", sorted(available_states), index=available_states.index("Minnesota"))
-emp_change = st.slider("Employment rate change (%)", -10.0, 10.0, step=0.1, value=-2.0)
+state_var = f"state_{state_choice}"
+
+current_employment = poverty_inputs.loc[poverty_inputs['state'] == state_var, 'employ_est2'].values[0]
+emprate = current_employment*100
+
+st.write(f"The current employment rate in {state_choice} is **{current_employment * 100:.2f}%**")
+
+#emp_change = st.slider("Drag the slider to select a change in employment. Note that you're selecting a rate of *employment*, so if you'd like to see an increase in *umeployment*, scroll to a negative value.", -10.0, 10.0, step=0.1, value=0.0)
+emp_change = st.slider("Drag the slider to select a change in employment. Note that you're selecting a rate of *employment*, so if you'd like to see an increase in *umeployment*, decrease the value.", emprate - 10.0, emprate + 10.0, step=0.1, value=emprate)
 
 # Calculate predictions
-state_var = f"state_{state_choice}"
-emp_change_decimal = emp_change / 100
+#emp_change_decimal = emp_change / 100
+emp_change_decimal = (emp_change - emprate) / 100
+
 
 adults_result = predict_change("adults", state_var, emp_change_decimal)
 kids_result = predict_change("kids", state_var, emp_change_decimal)
 
-# Display Metrics
-st.markdown("### Predicted Percent Change in Medicaid Eligibility")
-m1, m2, m3 = st.columns(3)
-m1.metric("👩 Change in Adult Eligibility", f"{adults_result * 100:.2f} %")
-m2.metric("🧒 Change in Child Eligibility", f"{kids_result * 100:.2f} %")
-m3.metric("Total change in Eligibility", f"{(kids_result + adults_result)* 100:.2f} %")
+adult_basecount = poverty_inputs.loc[poverty_inputs['state'] == state_var, 'elig_all_adult_w2'].values[0]
+kids_basecount = poverty_inputs.loc[poverty_inputs['state'] == state_var, 'elig_all_child_w2'].values[0]
 
-st.markdown("### Predicted Change in Medicaid Eligibility")
+# Display Metrics
+st.markdown("### Predicted Percent Change in Medicaid Eligibility Rate")
 m1, m2, m3 = st.columns(3)
-m1.metric("👩 Change in Adult Eligibility", f"{adults_result * 100:.2f} %")
-m2.metric("🧒 Change in Child Eligibility", f"{kids_result * 100:.2f} %")
-m3.metric("Total change in Eligibility", f"{(kids_result + adults_result)* 100:.2f} %")
+m1.metric("👩 Change in Adult Eligibility", f"{adults_result:.2f} %")
+m2.metric("🧒 Change in Child Eligibility", f"{kids_result:.2f} %")
+m3.metric("Total change in Eligibility", f"{(kids_result + adults_result):.2f} %")
+
+st.markdown("### Number of individuals eligible for Medicaid")
+m1, m2, m3 = st.columns(3)
+m1.metric("Aduluts eligible", f"{adult_basecount * (adults_result/100 + 1):,.0f}")
+m2.metric("Kids eligible", f"{kids_basecount * (kids_result/100 + 1):,.0f}")
+m3.metric("Total eligible", f"{(adult_basecount * (adults_result/100 + 1)) + (kids_basecount * (kids_result/100 + 1)):,.0f}")
 
 # Line chart over employment range
 st.markdown("### 📈 Eligibility Over Employment Rate Changes")
 x_vals = np.linspace(-0.1, 0.1, 100)
-adults_preds = [predict_change("adults", state_var, x) * 100 for x in x_vals]
-kids_preds = [predict_change("kids", state_var, x) * 100 for x in x_vals]
+adults_preds = [predict_change("adults", state_var, x) for x in x_vals]
+kids_preds = [predict_change("kids", state_var, x) for x in x_vals]
 
 chart_df = pd.DataFrame({
     "Employment Change (%)": x_vals * 100,
@@ -104,34 +116,3 @@ chart_df = pd.DataFrame({
 fig = px.line(chart_df, x="Employment Change (%)", y=["Adults", "Children"],
               labels={"value": "Eligibility %"}, title=f"Effect of Employment Rate Change on Eligibility in {state_choice}")
 st.plotly_chart(fig, use_container_width=True)
-
-with st.expander("🗺️ Map: Medicaid Eligibility by State", expanded=True):
-    group_choice = st.radio("Group to map:", ["Adults", "Children"], horizontal=True)
-
-    group_key = "adults" if group_choice == "Adults" else "kids"
-    color_label = f"{group_choice} Eligibility (%)"
-
-    map_data = []
-    for state_name in available_states:
-        var = f"state_{state_name}"
-        abbr = state_abbr.get(state_name)
-        if abbr:
-            result = predict_change(group_key, var, emp_change_decimal)
-            if not np.isnan(result):
-                map_data.append({"State": abbr, "Eligibility": result * 100})
-
-    map_df = pd.DataFrame(map_data)
-
-    fig = px.choropleth(
-        map_df,
-        locations="State",
-        locationmode="USA-states",
-        color="Eligibility",
-        scope="usa",
-        color_continuous_scale="Viridis",
-        labels={"Eligibility": color_label},
-        title=f"📍 {group_choice} Medicaid Eligibility by State"
-    )
-
-    fig.update_layout(margin={"r":0, "t":40, "l":0, "b":0})
-    st.plotly_chart(fig, use_container_width=True)
