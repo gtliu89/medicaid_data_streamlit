@@ -79,7 +79,9 @@ emp_change = st.slider("Drag the slider to select a change in employment. Note t
 
 # Calculate predictions
 #emp_change_decimal = emp_change / 100
-emp_change_decimal = (emp_change - emprate) / 100
+#emp_change_decimal = (emp_change - emprate) / 100
+emp_change_decimal = (emp_change - emprate)/emprate
+
 
 
 adults_result = predict_change("adults", state_var, emp_change_decimal)
