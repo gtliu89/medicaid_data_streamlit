@@ -89,7 +89,6 @@ total_basecount = adult_basecount + kids_basecount
 adults_eligible = adult_basecount * (adults_result/100 + 1)
 kids_eligible = kids_basecount * (kids_result/100 + 1)
 total_eligible = (adult_basecount * (adults_result/100 + 1)) + (kids_basecount * (kids_result/100 + 1))
-
 delta = total_eligible - total_basecount
 
 st.write(f"You have entered a change in employment of {emp_change - emprate:.2f}%.")
