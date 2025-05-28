@@ -103,8 +103,6 @@ m1.metric("👩 Change in Adult Eligibility", f"{adults_result:.2f} %")
 m2.metric("🧒 Change in Child Eligibility", f"{kids_result:.2f} %")
 m3.metric("Total change in Eligibility", f"{((delta)/total_basecount)*100:.2f} %")
 
-
-
 # Line chart over employment range
 st.markdown("### 📈 Eligibility Over Employment Rate Changes")
 x_vals = np.linspace(-10, 10, 100)
