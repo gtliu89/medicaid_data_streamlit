@@ -85,7 +85,11 @@ kids_result = predict_change("kids", state_var, emp_change_decimal)
 adult_basecount = poverty_inputs.loc[poverty_inputs['state'] == state_var, 'elig_all_adult_w2'].values[0]
 kids_basecount = poverty_inputs.loc[poverty_inputs['state'] == state_var, 'elig_all_child_w2'].values[0]
 total_basecount = adult_basecount + kids_basecount
+
+adults_eligible = adult_basecount * (adults_result/100 + 1)
+kids_eligible = kids_basecount * (kids_result/100 + 1)
 total_eligible = (adult_basecount * (adults_result/100 + 1)) + (kids_basecount * (kids_result/100 + 1))
+
 delta = total_eligible - total_basecount
 
 st.write(f"You have entered a change in employment of {emp_change - emprate:.2f}%.")
@@ -93,8 +97,8 @@ st.write(f"You have entered a change in employment of {emp_change - emprate:.2f}
 # Display Metrics
 st.markdown("### Number of individuals eligible for Medicaid")
 m1, m2, m3 = st.columns(3)
-m1.metric("Aduluts eligible", f"{adult_basecount * (adults_result/100 + 1):,.0f}")
-m2.metric("Kids eligible", f"{kids_basecount * (kids_result/100 + 1):,.0f}")
+m1.metric("Aduluts eligible", f"{adults_eligible:,.0f}", f"{adults_eligible - adult_basecount:+,.0f}")
+m2.metric("Kids eligible", f"{kids_eligible:,.0f}", f"{kids_eligible - kids_basecount:+,.0f}")
 m3.metric("Total eligible", f"{total_eligible:,.0f}", f"{delta:+,.0f}")
 
 st.markdown("### Predicted Percent Change in Medicaid Eligibility Rate")
