@@ -74,47 +74,55 @@ emprate = current_employment*100
 
 st.write(f"The current employment rate in {state_choice} is **{current_employment * 100:.2f}%**")
 
-#emp_change = st.slider("Drag the slider to select a change in employment. Note that you're selecting a rate of *employment*, so if you'd like to see an increase in *umeployment*, scroll to a negative value.", -10.0, 10.0, step=0.1, value=0.0)
-emp_change = st.slider("Drag the slider to select a change in employment. Note that you're selecting a rate of *employment*, so if you'd like to see an increase in *umeployment*, decrease the value.", emprate - 10.0, emprate + 10.0, step=0.1, value=emprate)
+emp_change = st.slider("Drag the slider to select a level of employment and see how it effects Medicaid eligibility.", emprate - 10.0, emprate + 10.0, step=0.1, value=emprate)
 
 # Calculate predictions
-#emp_change_decimal = emp_change / 100
-#emp_change_decimal = (emp_change - emprate) / 100
 emp_change_decimal = ((emp_change - emprate)/emprate) * 100
-
-
 
 adults_result = predict_change("adults", state_var, emp_change_decimal)
 kids_result = predict_change("kids", state_var, emp_change_decimal)
 
 adult_basecount = poverty_inputs.loc[poverty_inputs['state'] == state_var, 'elig_all_adult_w2'].values[0]
 kids_basecount = poverty_inputs.loc[poverty_inputs['state'] == state_var, 'elig_all_child_w2'].values[0]
+total_basecount = adult_basecount + kids_basecount
+total_eligible = (adult_basecount * (adults_result/100 + 1)) + (kids_basecount * (kids_result/100 + 1))
+delta = total_eligible - total_basecount
+
+st.write(f"You have entered a change in employment of {emp_change - emprate:.2f}%.")
 
 # Display Metrics
-st.markdown("### Predicted Percent Change in Medicaid Eligibility Rate")
-m1, m2, m3 = st.columns(3)
-m1.metric("👩 Change in Adult Eligibility", f"{adults_result:.2f} %")
-m2.metric("🧒 Change in Child Eligibility", f"{kids_result:.2f} %")
-m3.metric("Total change in Eligibility", f"{(kids_result + adults_result):.2f} %")
-
 st.markdown("### Number of individuals eligible for Medicaid")
 m1, m2, m3 = st.columns(3)
 m1.metric("Aduluts eligible", f"{adult_basecount * (adults_result/100 + 1):,.0f}")
 m2.metric("Kids eligible", f"{kids_basecount * (kids_result/100 + 1):,.0f}")
-m3.metric("Total eligible", f"{(adult_basecount * (adults_result/100 + 1)) + (kids_basecount * (kids_result/100 + 1)):,.0f}")
+m3.metric("Total eligible", f"{total_eligible:,.0f}", f"{delta:+,.0f}")
+
+st.markdown("### Predicted Percent Change in Medicaid Eligibility Rate")
+m1, m2, m3 = st.columns(3)
+m1.metric("👩 Change in Adult Eligibility", f"{adults_result:.2f} %")
+m2.metric("🧒 Change in Child Eligibility", f"{kids_result:.2f} %")
+m3.metric("Total change in Eligibility", f"{((delta)/total_basecount)*100:.2f} %")
+
+
 
 # Line chart over employment range
 st.markdown("### 📈 Eligibility Over Employment Rate Changes")
-x_vals = np.linspace(-0.1, 0.1, 100)
-adults_preds = [predict_change("adults", state_var, x) for x in x_vals]
-kids_preds = [predict_change("kids", state_var, x) for x in x_vals]
+x_vals = np.linspace(-10, 10, 100)
+x_vals_adjusted = [((emprate + change) - emprate) / emprate * 100 for change in x_vals]
+adults_preds = [predict_change("adults", state_var, x) for x in x_vals_adjusted]
+kids_preds = [predict_change("kids", state_var, x) for x in x_vals_adjusted]
 
 chart_df = pd.DataFrame({
-    "Employment Change (%)": x_vals * 100,
+    "Employment Change (%)": x_vals,
     "Adults": adults_preds,
     "Children": kids_preds
 })
 
 fig = px.line(chart_df, x="Employment Change (%)", y=["Adults", "Children"],
               labels={"value": "Eligibility %"}, title=f"Effect of Employment Rate Change on Eligibility in {state_choice}")
+fig.update_traces(hovertemplate="%{y:.2f}% change in eligibility at %{x:.2f}% employment change")
+
+fig.update_yaxes(range=[-20, 20])
+fig.update_xaxes(range=[-10, 10])
+
 st.plotly_chart(fig, use_container_width=True)
