@@ -34,6 +34,7 @@ coeffs, poverty_inputs = load_data()
 # Extract valid states
 state_rows = coeffs[coeffs["variable"].str.startswith("state_")]
 available_states = state_rows["variable"].str.replace("state_", "", regex=False).tolist()
+available_states.append("United States")
 
 # Mapping helpers
 group_col_map = {"adults": "adult", "kids": "child"}
@@ -69,42 +70,97 @@ st.markdown("Select a state and input a change in employment to see how it would
 state_choice = st.selectbox("Select a state", sorted(available_states), index=available_states.index("Minnesota"))
 state_var = f"state_{state_choice}"
 
-current_employment = poverty_inputs.loc[poverty_inputs['state'] == state_var, 'employ_est2'].values[0]
+if state_choice == "United States":
+    current_employment = 0.7299
+else:
+    current_employment = poverty_inputs.loc[poverty_inputs['state'] == state_var, 'employ_est2'].values[0]
+
 emprate = current_employment*100
 
 st.write(f"The current employment rate in {state_choice} is **{current_employment * 100:.2f}%**")
 
 emp_change = st.slider("Drag the slider to select a level of employment and see how it effects Medicaid eligibility.", emprate - 10.0, emprate + 10.0, step=0.1, value=emprate)
 
-# Calculate predictions
 emp_change_decimal = ((emp_change - emprate)/emprate) * 100
 
-adults_result = predict_change("adults", state_var, emp_change_decimal)
-kids_result = predict_change("kids", state_var, emp_change_decimal)
-
-adult_basecount = poverty_inputs.loc[poverty_inputs['state'] == state_var, 'elig_all_adult_w2'].values[0]
-kids_basecount = poverty_inputs.loc[poverty_inputs['state'] == state_var, 'elig_all_child_w2'].values[0]
-total_basecount = adult_basecount + kids_basecount
-
-adults_eligible = adult_basecount * (adults_result/100 + 1)
-kids_eligible = kids_basecount * (kids_result/100 + 1)
-total_eligible = (adult_basecount * (adults_result/100 + 1)) + (kids_basecount * (kids_result/100 + 1))
-delta = total_eligible - total_basecount
-
 st.write(f"You have entered a change in employment of {emp_change - emprate:.2f}%.")
+
+
+# Calculate national estimate if US is chosen
+if state_choice == "United States":
+    # National base counts
+    us_adults_base = poverty_inputs["elig_all_adult_w2"].sum()
+    us_kids_base = poverty_inputs["elig_all_child_w2"].sum()
+    us_base = us_adults_base + us_kids_base
+    
+    # Initialize accumulators for predicted totals
+    us_adults_eligible = 0
+    us_kids_eligible = 0
+    
+    # Loop through all states
+    for state in poverty_inputs["state"]:
+        # Predict percent change in eligibility
+        adult_pct_change = predict_change("adults", state, emp_change_decimal)
+        kids_pct_change = predict_change("kids", state, emp_change_decimal)
+        
+        # Get base counts
+        row = poverty_inputs[poverty_inputs["state"] == state]
+        adults_base = row["elig_all_adult_w2"].values[0]
+        kids_base = row["elig_all_child_w2"].values[0]
+        
+        # Calculate predicted count
+        us_adults_eligible += adults_base * (adult_pct_change/100 + 1)
+        us_kids_eligible += kids_base * (kids_pct_change/100 + 1)
+    
+    us_total_eligible = us_adults_eligible + us_kids_eligible
+    us_adults_result = ((us_adults_eligible - us_adults_base) / us_adults_base) * 100
+    us_kids_result = ((us_kids_eligible - us_kids_base) / us_kids_base) * 100
+    us_delta = us_total_eligible - us_base
+        
+        
+# Calculate predictions
+if state_choice != "United States":
+    adults_result = predict_change("adults", state_var, emp_change_decimal)
+    kids_result = predict_change("kids", state_var, emp_change_decimal)
+    
+    adults_basecount = poverty_inputs.loc[poverty_inputs['state'] == state_var, 'elig_all_adult_w2'].values[0]
+    kids_basecount = poverty_inputs.loc[poverty_inputs['state'] == state_var, 'elig_all_child_w2'].values[0]
+    total_basecount = adults_basecount + kids_basecount
+
+    adults_eligible = adults_basecount * (adults_result/100 + 1)
+    kids_eligible = kids_basecount * (kids_result/100 + 1)
+    total_eligible = (adults_basecount * (adults_result/100 + 1)) + (kids_basecount * (kids_result/100 + 1))
+    delta = total_eligible - total_basecount
+    
+else: 
+    adults_result = us_adults_result
+    kids_result = us_kids_result
+    adults_basecount = us_adults_base
+    kids_basecount = us_kids_base
+    total_basecount = us_base
+    
+    adults_eligible = us_adults_eligible
+    kids_eligible = us_kids_eligible
+    total_eligible = us_total_eligible
+    delta = us_delta
 
 # Display Metrics
 st.markdown("### Number of individuals eligible for Medicaid")
 m1, m2, m3 = st.columns(3)
-m1.metric("Aduluts eligible", f"{adults_eligible:,.0f}", f"{adults_eligible - adult_basecount:+,.0f}")
+m1.metric("Aduluts eligible", f"{adults_eligible:,.0f}", f"{adults_eligible - adults_basecount:+,.0f}")
 m2.metric("Kids eligible", f"{kids_eligible:,.0f}", f"{kids_eligible - kids_basecount:+,.0f}")
 m3.metric("Total eligible", f"{total_eligible:,.0f}", f"{delta:+,.0f}")
 
 st.markdown("### Predicted Percent Change in Medicaid Eligibility Rate")
 m1, m2, m3 = st.columns(3)
-m1.metric("👩 Change in Adult Eligibility", f"{adults_result:.2f} %")
-m2.metric("🧒 Change in Child Eligibility", f"{kids_result:.2f} %")
-m3.metric("Total change in Eligibility", f"{((delta)/total_basecount)*100:.2f} %")
+if state_choice == "United States":
+    m1.metric("👩 Change in Adult Eligibility", f"{((us_adults_eligible - us_adults_base) / us_adults_base) * 100:.2f} %")
+    m2.metric("🧒 Change in Child Eligibility", f"{((us_kids_eligible - us_kids_base) / us_kids_base)* 100:.2f} %")
+    m3.metric("Total change in Eligibility", f"{((us_total_eligible - us_base) / us_base) * 100:.2f} %")
+else:
+    m1.metric("👩 Change in Adult Eligibility", f"{adults_result:.2f} %")
+    m2.metric("🧒 Change in Child Eligibility", f"{kids_result:.2f} %")
+    m3.metric("Total change in Eligibility", f"{((delta)/total_basecount)*100:.2f} %")
 
 # Line chart over employment range
 st.markdown("### 📈 Eligibility Over Employment Rate Changes")
